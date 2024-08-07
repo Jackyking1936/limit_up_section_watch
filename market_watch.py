@@ -273,6 +273,8 @@ class MainApp(QWidget):
 
     def read_watch_list(self):
         file_path = self.lineEdit_default_file_path.text()
+        if file_path == '':
+            return
         watch_df = pd.read_excel(file_path)
         self.column_names = [col_name for col_name in watch_df.columns if 'Unnamed' not in col_name]
         self.table_dict = {}
