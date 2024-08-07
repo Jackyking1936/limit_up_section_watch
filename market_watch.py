@@ -10,14 +10,50 @@ import pickle
 from datetime import datetime
 
 from PySide6.QtWidgets import QTabWidget, QTableWidgetItem, QFileDialog, QApplication, QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QGridLayout, QLabel, QLineEdit, QPushButton, QSizePolicy, QPlainTextEdit
-from PySide6.QtGui import QIcon, QTextCursor
+from PySide6.QtGui import QIcon, QTextCursor, QColor
 from PySide6.QtCore import Qt, Signal, QObject, QSize
 
+
+class NumericTableWidgetItem(QTableWidgetItem):
+    def __init__(self, value):
+        super().__init__(str(value))
+        self.value = self._convert_to_number(value)
+
+    def _convert_to_number(self, value):
+        if isinstance(value, (int, float)):
+            return float(value)
+        if isinstance(value, str):
+            # 處理百分比
+            if value.strip() in ['-', '', 'N/A']:
+                return float('-inf')  # 使用負無窮大表示這些特殊值
+            
+            if value.endswith('%'):
+                try:
+                    return float(value.rstrip('%')) / 100
+                except ValueError:
+                    pass
+            # 處理普通數字
+            try:
+                return float(value.replace(',', ''))  # 處理千位分隔符
+            except ValueError:
+                pass
+        return value
+
+    def __lt__(self, other):
+        if isinstance(other, NumericTableWidgetItem):
+            if isinstance(self.value, (int, float)) and isinstance(other.value, (int, float)):
+                return self.value < other.value
+        return super().__lt__(other)
+
+    def setText(self, text):
+        super().setText(text)
+        self.value = self._convert_to_number(text)
 
 class Communicate(QObject):
     # 定義一個帶參數的信號
     print_log_signal = Signal(str)
     table_update_signal = Signal(str, str, int, str)
+    color_update_signal = Signal(str, str, bool)
 
 class MainApp(QWidget):
     def __init__(self, active_account):
@@ -35,9 +71,12 @@ class MainApp(QWidget):
         layout = QVBoxLayout()
 
         # 庫存表表頭
-        self.info_header = ['股票名稱', '股票代號', '市場別', '開盤價','最高價','最低價', '現價', '漲幅%', '9:40前漲停']
+        self.info_header = ['股票名稱', '股票代號', '市場別', '開盤價','最高價','最低價', '現價', '漲幅(%)', '9:40前漲停']
         
         self.info_tab = QTabWidget()
+        table = QTableWidget(0, len(self.info_header))
+        table.setHorizontalHeaderLabels(self.info_header)
+        self.info_tab.addTab(table, '類股名稱')
 
         # 整個設定區layout
         layout_parameter = QGridLayout()
@@ -104,6 +143,7 @@ class MainApp(QWidget):
         self.communicator = Communicate()
         self.communicator.print_log_signal.connect(self.print_log)
         self.communicator.table_update_signal.connect(self.update_table)
+        self.communicator.color_update_signal.connect(self.limit_up_coloring)
 
         # default parameter initilaize
         self.subscribed_ids = {}
@@ -118,11 +158,19 @@ class MainApp(QWidget):
         self.websocket.on("error", self.handle_error)
         self.websocket.connect()
 
+    def limit_up_coloring(self, table_name, symbol, is_limit_up):
+        if is_limit_up:
+            self.table_name_maps[table_name].item(self.row_symbol_maps[table_name][symbol], self.col_idx_map['漲幅(%)']).setBackground(QColor(Qt.red))
+            self.table_name_maps[table_name].item(self.row_symbol_maps[table_name][symbol], self.col_idx_map['漲幅(%)']).setForeground(QColor(Qt.white))
+        else:
+            self.table_name_maps[table_name].item(self.row_symbol_maps[table_name][symbol], self.col_idx_map['漲幅(%)']).setBackground(QColor(Qt.transparent))
+            self.table_name_maps[table_name].item(self.row_symbol_maps[table_name][symbol], self.col_idx_map['漲幅(%)']).setForeground(QColor())
+
     def update_table(self, table_name, symbol, col, value):
         try:
             table = self.table_name_maps[table_name]
             table.item(self.row_symbol_maps[table_name][symbol], col).setText(value)
-            if col == self.col_idx_map['漲幅%']:
+            if col == self.col_idx_map['漲幅(%)']:
                 table.sortByColumn(col, Qt.DescendingOrder)
                 symbol_list = []
                 for i in range(table.rowCount()):
@@ -175,15 +223,18 @@ class MainApp(QWidget):
             for name in self.table_name_maps.keys():
                 # print(name)
                 if symbol in self.row_symbol_maps[name]:
+                    if 'isLimitUpPrice' in data:
+                        if data['isLimitUpPrice']:
+                            self.communicator.color_update_signal.emit(name, symbol, data['isLimitUpPrice'])
                     self.communicator.table_update_signal.emit(name, symbol, self.col_idx_map['市場別'], str(market_type))
                     self.communicator.table_update_signal.emit(name, symbol, self.col_idx_map['開盤價'], str(open_price))
                     self.communicator.table_update_signal.emit(name, symbol, self.col_idx_map['最高價'], str(high_price))
                     self.communicator.table_update_signal.emit(name, symbol, self.col_idx_map['最低價'], str(low_price))
                     self.communicator.table_update_signal.emit(name, symbol, self.col_idx_map['現價'], str(cur_price))
-                    self.communicator.table_update_signal.emit(name, symbol, self.col_idx_map['漲幅%'], str(change_percent))
+                    self.communicator.table_update_signal.emit(name, symbol, self.col_idx_map['漲幅(%)'], str(change_percent)+'%')
 
         elif event == "data":
-            print(event, data)
+            # print(event, data)
             if 'isTrial' in data:
                 if data['isTrial']:
                     return
@@ -195,18 +246,21 @@ class MainApp(QWidget):
             change_percent = data['changePercent']
             tick_time = data['lastUpdated']
 
-            if tick_time<self.threshold_unix:
-                if 'isLimitUpPrice' in data:
-                    if data['isLimitUpPrice']:
-                        self.communicator.table_update_signal.emit(name, symbol, self.col_idx_map['9:40前漲停'], 'Y')    
-
             for name in self.table_name_maps.keys():
                 # print(name)
                 if symbol in self.row_symbol_maps[name]:
+                    if 'isLimitUpPrice' in data:
+                        if data['isLimitUpPrice']:
+                            if tick_time<self.threshold_unix:
+                                self.communicator.table_update_signal.emit(name, symbol, self.col_idx_map['9:40前漲停'], 'Y')
+                            self.communicator.color_update_signal.emit(name, symbol, data['isLimitUpPrice'])
+                        else:
+                            self.communicator.color_update_signal.emit(name, symbol, False)
+
                     self.communicator.table_update_signal.emit(name, symbol, self.col_idx_map['最高價'], str(high_price))
                     self.communicator.table_update_signal.emit(name, symbol, self.col_idx_map['最低價'], str(low_price))
                     self.communicator.table_update_signal.emit(name, symbol, self.col_idx_map['現價'], str(cur_price))
-                    self.communicator.table_update_signal.emit(name, symbol, self.col_idx_map['漲幅%'], str(change_percent)+'%')
+                    self.communicator.table_update_signal.emit(name, symbol, self.col_idx_map['漲幅(%)'], str(change_percent)+'%')
 
     def handle_connect(self):
         self.communicator.print_log_signal.emit('market data connected')
@@ -240,16 +294,19 @@ class MainApp(QWidget):
             self.table_name_maps[col_name] = table
             self.row_symbol_maps[col_name] = {}
 
-            # ['股票名稱', '股票代號', '市場別', '開盤價','最高價','最低價', '現價', '漲幅%', '9:40前漲停']
+            # ['股票名稱', '股票代號', '市場別', '開盤價','最高價','最低價', '現價', '漲幅(%)', '9:40前漲停']
             for i in range(rows):
                 for j in range(cols):
-                    item = QTableWidgetItem()
+                    item = QTableWidgetItem('-')
                     if self.info_header[j] == '股票名稱':
                         item.setText(self.table_dict[col_name].iloc[i, 1])
                     elif self.info_header[j] == '股票代號':
                         symbol = self.table_dict[col_name].iloc[i, 0].replace('.TW', '')
                         item.setText(symbol)
                         self.row_symbol_maps[col_name][symbol] = i
+                    elif self.info_header[j] == '漲幅(%)':
+                        item = NumericTableWidgetItem('-')
+                        
 
                     table.setItem(i, j, item)
 
@@ -258,6 +315,7 @@ class MainApp(QWidget):
                 'channel': 'aggregates', 
                 'symbols': list(self.row_symbol_maps[col_name].keys())
             })
+        self.info_tab.removeTab(0)
 
     def showDialog(self):
         my_target_path = None
