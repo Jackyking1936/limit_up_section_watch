@@ -65,7 +65,7 @@ class MainApp(QWidget):
         my_icon.addFile('market.png') 
         self.setWindowIcon(my_icon)
         self.setWindowTitle("Python漲停濾網看盤(教學範例，使用前請先了解相關內容)")
-        self.resize(1200, 700)
+        self.resize(1200, 630)
 
         # 製作上下排列layout上為庫存表，下為log資訊
         layout = QVBoxLayout()
@@ -214,10 +214,26 @@ class MainApp(QWidget):
             # print(event, data)
             symbol = data['symbol']
             market_type = data['market']
-            open_price = data['openPrice']
-            high_price = data['highPrice']
-            low_price = data['lowPrice']
-            cur_price = data['lastPrice']
+            if 'openPrice' in data:
+                open_price = data['openPrice']
+            else:
+                open_price = '-'
+            
+            if 'highPrice' in data:
+                high_price = data['highPrice']
+            else:
+                high_price = '-'
+            
+            if 'lowPrice' in data:
+                low_price = data['lowPrice']
+            else:
+                low_price = '-'
+
+            if 'lastPrice' in data:
+                cur_price = data['lastPrice']
+            else:
+                cur_price = '-'
+
             change_percent = data['changePercent']
 
             for name in self.table_name_maps.keys():
@@ -240,11 +256,27 @@ class MainApp(QWidget):
                     return
                 
             symbol = data['symbol']
-            high_price = data['highPrice']
-            low_price = data['lowPrice']
-            cur_price = data['lastPrice']
+            if 'openPrice' in data:
+                open_price = data['openPrice']
+            else:
+                open_price = '-'
+            
+            if 'highPrice' in data:
+                high_price = data['highPrice']
+            else:
+                high_price = '-'
+            
+            if 'lowPrice' in data:
+                low_price = data['lowPrice']
+            else:
+                low_price = '-'
+
+            if 'lastPrice' in data:
+                cur_price = data['lastPrice']
+            else:
+                cur_price = '-'
+
             change_percent = data['changePercent']
-            tick_time = data['lastUpdated']
 
             for name in self.table_name_maps.keys():
                 # print(name)
