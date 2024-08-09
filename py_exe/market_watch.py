@@ -214,6 +214,7 @@ class MainApp(QWidget):
             # print(event, data)
             symbol = data['symbol']
             market_type = data['market']
+            
             if 'openPrice' in data:
                 open_price = data['openPrice']
             else:
@@ -277,6 +278,7 @@ class MainApp(QWidget):
                 cur_price = '-'
 
             change_percent = data['changePercent']
+            tick_time = data['lastUpdated']
 
             for name in self.table_name_maps.keys():
                 # print(name)
