@@ -257,6 +257,7 @@ class MainApp(QWidget):
                     return
                 
             symbol = data['symbol']
+
             if 'openPrice' in data:
                 open_price = data['openPrice']
             else:
@@ -291,6 +292,7 @@ class MainApp(QWidget):
                         else:
                             self.communicator.color_update_signal.emit(name, symbol, False)
 
+                    self.communicator.table_update_signal.emit(name, symbol, self.col_idx_map['開盤價'], str(open_price))
                     self.communicator.table_update_signal.emit(name, symbol, self.col_idx_map['最高價'], str(high_price))
                     self.communicator.table_update_signal.emit(name, symbol, self.col_idx_map['最低價'], str(low_price))
                     self.communicator.table_update_signal.emit(name, symbol, self.col_idx_map['現價'], str(cur_price))
