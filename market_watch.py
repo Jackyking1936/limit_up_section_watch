@@ -278,8 +278,16 @@ class MainApp(QWidget):
             else:
                 cur_price = '-'
 
-            change_percent = data['changePercent']
-            tick_time = data['lastUpdated']
+            if 'changePercent' in data:
+                change_percent = data['changePercent']
+            else:
+                change_percent = '-'
+            
+            if 'lastUpdated' in data:
+                tick_time = data['lastUpdated']
+            else:
+                tick_time = self.threshold_unix+1
+            
 
             for name in self.table_name_maps.keys():
                 # print(name)
